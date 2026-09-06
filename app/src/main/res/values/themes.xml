@@ -1,0 +1,3 @@
+<resources>
+    <style name="Theme.ScreenFighters" parent="Theme.MaterialComponents.DayNight.NoActionBar" />
+</resources>
