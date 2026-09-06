@@ -3,7 +3,7 @@ apply plugin: 'kotlin-android'
 
 android {
     namespace 'com.ishhf.screenfighters'
-    compileSdk 33
+    compileSdk 34
 
     defaultConfig {
         applicationId "com.ishhf.screenfighters"
