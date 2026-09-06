@@ -1,12 +1,12 @@
 package com.ishhf.screenfighters
 
+import android.animation.ObjectAnimator
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.Handler
@@ -18,16 +18,13 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import kotlin.math.hypot
 import kotlin.math.roundToInt
 
-/**
- * الخدمة يلي بتعرض الشخصيات فوق باقي التطبيقات (overlay)
- * وبتدير القتال التلقائي بينهم + السحب باليد + العناصر.
- */
 class OverlayService : Service() {
 
     companion object {
@@ -42,8 +39,8 @@ class OverlayService : Service() {
         private const val NOTIF_ID = 1
         private const val TICK_MS = 200L
         private const val DEFAULT_ATTACK_RANGE = 130
-        private const val CHAR_WIDTH = 130
-        private const val CHAR_HEIGHT = 170
+        private const val CHAR_WIDTH = 150
+        private const val CHAR_HEIGHT = 220
     }
 
     private lateinit var windowManager: WindowManager
@@ -52,7 +49,6 @@ class OverlayService : Service() {
     private var loopRunning = false
     private var isForeground = false
 
-    /** حالة كل شخصية: صحتها، سلاحها، موقعها، والعرض نفسه */
     inner class Fighter(
         val id: Int,
         val view: View,
@@ -64,7 +60,8 @@ class OverlayService : Service() {
         var speed: Int = 6,
         var defenseMul: Double = 1.0,
         var alive: Boolean = true,
-        var beingDragged: Boolean = false
+        var beingDragged: Boolean = false,
+        var idleAnimator: ObjectAnimator? = null
     ) {
         val healthBar: ProgressBar = view.findViewById(R.id.healthBar)
 
@@ -140,7 +137,6 @@ class OverlayService : Service() {
             WindowManager.LayoutParams.TYPE_PHONE
 
     private fun spawnCharacter(id: Int, weapon: String) {
-        // إذا الشخصية موجودة أصلاً، شيلها وابني وحدة جديدة بدلها
         removeCharacter(id)
 
         val root = FrameLayout(this)
@@ -148,13 +144,13 @@ class OverlayService : Service() {
         val view = inflater.inflate(R.layout.overlay_character, root, false)
 
         val label = view.findViewById<TextView>(R.id.charLabel)
-        val emoji = view.findViewById<TextView>(R.id.charEmoji)
+        val image = view.findViewById<ImageView>(R.id.charImage)
         if (id == 1) {
             label.text = "الأخضر"
-            emoji.setTextColor(Color.parseColor("#4CAF50"))
+            image.setImageResource(R.drawable.robot_green)
         } else {
             label.text = "الأحمر"
-            emoji.setTextColor(Color.parseColor("#F44336"))
+            image.setImageResource(R.drawable.robot_red)
         }
 
         val params = WindowManager.LayoutParams(
@@ -175,6 +171,25 @@ class OverlayService : Service() {
 
         windowManager.addView(view, params)
         characters[id] = fighter
+        startIdleAnimation(fighter)
+    }
+
+    private fun startIdleAnimation(fighter: Fighter) {
+        val bob = ObjectAnimator.ofFloat(fighter.view, "translationY", 0f, -10f, 0f)
+        bob.duration = 700
+        bob.repeatCount = ObjectAnimator.INFINITE
+        bob.start()
+        fighter.idleAnimator = bob
+    }
+
+    private fun playAttackPulse(fighter: Fighter) {
+        fighter.view.animate()
+            .scaleX(1.2f).scaleY(1.2f)
+            .setDuration(70)
+            .withEndAction {
+                fighter.view.animate().scaleX(1f).scaleY(1f).setDuration(90).start()
+            }
+            .start()
     }
 
     private fun applyWeapon(fighter: Fighter, weapon: String) {
@@ -276,6 +291,7 @@ class OverlayService : Service() {
         val dmg = (attacker.damage * defender.defenseMul).roundToInt().coerceAtLeast(1)
         defender.health -= dmg
         defender.updateHealthBar()
+        playAttackPulse(attacker)
         if (defender.health <= 0 && defender.alive) {
             defender.alive = false
             toast("${labelOf(attacker.id)} فاز على ${labelOf(defender.id)} 🏆")
@@ -289,16 +305,15 @@ class OverlayService : Service() {
         try {
             if (fighter.alive) windowManager.updateViewLayout(fighter.view, fighter.params)
         } catch (e: Exception) {
-            // العرض ما زال يضاف أو تمت إزالته، تجاهل
         }
     }
 
     private fun removeCharacter(id: Int) {
         val f = characters[id] ?: return
+        f.idleAnimator?.cancel()
         try {
             windowManager.removeView(f.view)
         } catch (e: Exception) {
-            // العرض غير مضاف أصلاً، تجاهل
         }
         characters.remove(id)
     }
